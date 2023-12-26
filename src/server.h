@@ -17,7 +17,7 @@ namespace H_redis {
             std::vector<struct pollfd> poll_args;
 
         public:
-            static int make_socket() {
+            int make_socket() {
                 fd = socket(AF_INET, SOCK_STREAM, 0);
                 if (fd < 0) {
                     die("socket()");
@@ -37,7 +37,7 @@ namespace H_redis {
                 int rv = bind(fd, (const sockaddr *)&addr, sizeof(addr));
 
                 if(rv) {
-                    dis("bind()");
+                    die("bind()");
                 }
 
                 // listen
@@ -91,5 +91,5 @@ namespace H_redis {
                     accept_new_conn(fd2conn, fd);
                 }
             }
-    }
+    };
 }

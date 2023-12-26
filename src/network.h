@@ -14,44 +14,47 @@
 #include <vector>
 
 #include "hashtable.h"
+#ifndef NETWORK_H
+#define NETWORK_H
+
 // 一个页面的大小就是4kb，也就是4096字节
 const size_t k_max_msg = 4096;
 const size_t k_max_args = 1024;
 
-#define container_of(ptr, type, member) ({                  
-    const typeof( ((type *)0)->member ) *__mptr = (ptr);    
-    (type *)( (char *)__mptr - offsetof(type, member) );})
+#define container_of(ptr, type, member) ({const typeof( ((type *)0)->member ) *__mptr = (ptr);(type *)( (char *)__mptr - offsetof(type, member) );})
 
 // 描述连接的状态
 enum {
     STATE_REQ = 0,  // read 当前连接的状态为：正在请求读入
     STATE_RES = 1,  // write 当前连接的状态为：正在准备回复客户端的请求
-    STATE_END = 2,  // over 当前连接的状态为：连接已经被销毁
+    STATE_END = 2  // over 当前连接的状态为：连接已经被销毁
 };
 
 // 回应的状态
-enum {
-    RES_OK = 0, // 操作成功的结果状态
-    RES_ERR = 1, // 操作失败的结果状态
-    RES_NX = 2;  // 未找到的结果状态
-}
+    enum
+    {
+        RES_OK = 0,  // 操作成功的结果状态
+        RES_ERR = 1, // 操作失败的结果状态
+        RES_NX = 2,  // 未找到的结果状态
+    };
 
-// 映射一个socket所对应的状态，并保存该连接的相应信息，
-// 例如：输入、输出缓冲区，以及连接状态等
-struct Conn {
-    int fd = -1;
-    uint32_t state = 0;                               
-    // STATE_REQ 代表当前正在读取请求
-    // STATE_RES 代表当前正在准备回复
+    // 映射一个socket所对应的状态，并保存该连接的相应信息，
+    // 例如：输入、输出缓冲区，以及连接状态等
+    struct Conn
+    {
+        int fd = -1;
+        uint32_t state = 0;
+        // STATE_REQ 代表当前正在读取请求
+        // STATE_RES 代表当前正在准备回复
 
-    // buffer for reading
-    size_t rbuf_size = 0; // 已经读入缓冲区的大小
-    uint8_t rbuf[4 + k_max_msg]; 
+        // buffer for reading
+        size_t rbuf_size = 0; // 已经读入缓冲区的大小
+        uint8_t rbuf[4 + k_max_msg];
 
-    // buffer for writing
-    size_t wbuf_size = 0;  // 写缓冲区的总大小
-    size_t wbuf_sent = 0;  // 已经写入的大小
-    uint8_t wbuf[4 + k_max_msg];
+        // buffer for writing
+        size_t wbuf_size = 0; // 写缓冲区的总大小
+        size_t wbuf_sent = 0; // 已经写入的大小
+        uint8_t wbuf[4 + k_max_msg];
 };
 
 void die(const char *msg) {
@@ -104,7 +107,7 @@ int32_t accept_new_conn(std::vector<Conn *> &fd2conn, int fd) {
 
     // error
     if(!conn) {
-        close(conn);
+        close(connfd);
         return -1;
     }
 
@@ -223,7 +226,7 @@ uint32_t do_set(std::vector<std::string> &cmd, uint8_t *res, uint32_t *reslen) {
         ent->key.swap(key.key);
         ent->val.swap(cmd[2]);
         ent->node.hcode = key.node.hcode;
-        hm_insert(&g_data.db, &ent.node);
+        hm_insert(&g_data.db, &ent->node);
     }
 
     return RES_OK;
@@ -269,6 +272,38 @@ int32_t do_request(const uint8_t *req , uint32_t reqlen , uint32_t *rescode , ui
     }
 
     return 0;
+}
+
+bool try_flush_buffer(Conn *conn) {
+    ssize_t rv = 0;
+    do {
+        size_t remain = conn->wbuf_size - conn->wbuf_sent;
+        rv = write(conn->fd, &conn->wbuf[conn->wbuf_sent], remain);
+    } while (rv < 0 && errno == EINTR);
+    if (rv < 0 && errno == EAGAIN) {
+        // got EAGAIN, stop.
+        return false;
+    }
+    if (rv < 0) {
+        msg("write() error");
+        conn->state = STATE_END;
+        return false;
+    }
+    conn->wbuf_sent += (size_t)rv;
+    assert(conn->wbuf_sent <= conn->wbuf_size);
+    if (conn->wbuf_sent == conn->wbuf_size) {
+        // response was fully sent, change state back
+        conn->state = STATE_REQ;
+        conn->wbuf_sent = 0;
+        conn->wbuf_size = 0;
+        return false;
+    }
+    // still got some data in wbuf, could try to write again
+    return true;
+}
+
+void state_res(Conn *conn) {
+    while (try_flush_buffer(conn)) {}
 }
 
 bool try_one_request(Conn *conn) {
@@ -362,38 +397,6 @@ void state_req(Conn *conn) {
     while (try_fill_buffer(conn)) {}
 }
 
-bool try_flush_buffer(Conn *conn) {
-    ssize_t rv = 0;
-    do {
-        size_t remain = conn->wbuf_size - conn->wbuf_sent;
-        rv = write(conn->fd, &conn->wbuf[conn->wbuf_sent], remain);
-    } while (rv < 0 && errno == EINTR);
-    if (rv < 0 && errno == EAGAIN) {
-        // got EAGAIN, stop.
-        return false;
-    }
-    if (rv < 0) {
-        msg("write() error");
-        conn->state = STATE_END;
-        return false;
-    }
-    conn->wbuf_sent += (size_t)rv;
-    assert(conn->wbuf_sent <= conn->wbuf_size);
-    if (conn->wbuf_sent == conn->wbuf_size) {
-        // response was fully sent, change state back
-        conn->state = STATE_REQ;
-        conn->wbuf_sent = 0;
-        conn->wbuf_size = 0;
-        return false;
-    }
-    // still got some data in wbuf, could try to write again
-    return true;
-}
-
-void state_res(Conn *conn) {
-    while (try_flush_buffer(conn)) {}
-}
-
 void connection_io(Conn *conn) {
     if (conn->state == STATE_REQ) {
         state_req(conn);
@@ -403,3 +406,5 @@ void connection_io(Conn *conn) {
         assert(0);  // not expected
     }
 }
+
+#endif // NETWORK_H

@@ -25,12 +25,12 @@ static HNode **h_lookup(HTab *htab , HNode *key , bool(*cmp)(HNode * , HNode*)) 
     }
 
     size_t pos = key->hcode & htab->mask;
-    HNode **from = &htab[pos]->next;
+    HNode **from = &htab->tab[pos];
     while(*from) {
         if(cmp(*from , key)) {
             return from;
         }
-        from = &(*from->next);
+        from = &(*from)->next;
     }
     return NULL;
 }
@@ -62,7 +62,7 @@ static void hm_help_resizing(HMap *hmap) {
         nwork++;
     }
 
-    if(hmap->ht2.size() == 0) {
+    if((hmap->ht2).size == 0) {
         free(hmap->ht2.tab);
         hmap->ht2 = HTab{};
     }
@@ -93,7 +93,7 @@ void hm_insert(HMap *hmap , HNode *node) {
     if(!hmap->ht1.tab) {
         h_init(&hmap->ht1 , 4);
     }
-    h_insert(hmap->ht1, node);
+    h_insert(&(hmap->ht1), node);
 
     if(!hmap->ht2.tab) {
         // 检查是否需要调整大小
@@ -114,14 +114,14 @@ HNode* hm_pop(HMap *hmap , HNode *key , bool (*cmp)(HNode *, HNode *)) {
 
     from = h_lookup(&hmap->ht2, key, cmp);
     if(from) {
-        return h_detach(&hmap->ht2)
+        return h_detach(&hmap->ht2, from);
     }
     return NULL;
 }
 
 void hm_destroy(HMap *hmap) {
     assert(hmap->ht1.size + hmap->ht2.size == 0);
-    free(hmap->ht1);
-    free(hmap->ht2);
+    free(&hmap->ht1);
+    free(&hmap->ht2);
     *hmap = HMap{};
 }

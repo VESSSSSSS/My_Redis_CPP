@@ -16,7 +16,6 @@
 #include "../src/hashtable.h"
 #include "../src/network.h"
 #include "../src/server.h"
-#include "../src/client.h"
 
 int main() {
     H_redis::Server server{};
