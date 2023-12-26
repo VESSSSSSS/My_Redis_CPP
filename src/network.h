@@ -36,7 +36,7 @@ enum {
     RES_NX = 2;  // 未找到的结果状态
 }
 
-// 映射一个socket连接，并保存该连接的相应信息，
+// 映射一个socket所对应的状态，并保存该连接的相应信息，
 // 例如：输入、输出缓冲区，以及连接状态等
 struct Conn {
     int fd = -1;
@@ -271,7 +271,7 @@ int32_t do_request(const uint8_t *req , uint32_t reqlen , uint32_t *rescode , ui
     return 0;
 }
 
-static bool try_one_request(Conn *conn) {
+bool try_one_request(Conn *conn) {
     // try to parse a request from the buffer
     if (conn->rbuf_size < 4) {
         // not enough data in the buffer. Will retry in the next iteration
@@ -322,7 +322,7 @@ static bool try_one_request(Conn *conn) {
     return (conn->state == STATE_REQ);
 }
 
-static bool try_fill_buffer(Conn *conn) {
+bool try_fill_buffer(Conn *conn) {
     // try to fill the buffer
     assert(conn->rbuf_size < sizeof(conn->rbuf));
     ssize_t rv = 0;
@@ -358,11 +358,11 @@ static bool try_fill_buffer(Conn *conn) {
     return (conn->state == STATE_REQ);
 }
 
-static void state_req(Conn *conn) {
+void state_req(Conn *conn) {
     while (try_fill_buffer(conn)) {}
 }
 
-static bool try_flush_buffer(Conn *conn) {
+bool try_flush_buffer(Conn *conn) {
     ssize_t rv = 0;
     do {
         size_t remain = conn->wbuf_size - conn->wbuf_sent;
@@ -390,11 +390,11 @@ static bool try_flush_buffer(Conn *conn) {
     return true;
 }
 
-static void state_res(Conn *conn) {
+void state_res(Conn *conn) {
     while (try_flush_buffer(conn)) {}
 }
 
-static void connection_io(Conn *conn) {
+void connection_io(Conn *conn) {
     if (conn->state == STATE_REQ) {
         state_req(conn);
     } else if (conn->state == STATE_RES) {
